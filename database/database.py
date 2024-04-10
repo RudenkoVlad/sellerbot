@@ -54,6 +54,9 @@ async def get_user():
     return users
 
 
+async def get_items_by_category(category):
+    items = cur.execute("SELECT * FROM items WHERE category=?", (category,)).fetchall()
+    return items
 
 
 
