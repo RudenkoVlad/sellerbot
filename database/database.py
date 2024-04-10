@@ -1,0 +1,60 @@
+import sqlite3 as sq
+
+db = sq.connect('database/bot.db')
+cur = db.cursor()
+
+
+async def db_start():
+    cur.execute('CREATE TABLE IF NOT EXISTS accounts('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                'tg_id INTEGER,'
+                'card_id INTEGER,'
+                'active BOOLEAN DEFAULT(TRUE))')
+    cur.execute('CREATE TABLE IF NOT EXISTS items('
+                'ite_id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                'category TEXT,'
+                'name TEXT,'
+                'desc TEXT,'
+                'price TEXT,'
+                'photo TEXT)')
+    db.commit()
+
+
+async def add_user(user_id):
+    user = cur.execute('SELECT * FROM accounts WHERE tg_id == {key}'.format(key=user_id)).fetchone()
+    if not user:
+        cur.execute('INSERT INTO accounts (tg_id) VALUES ({key})'.format(key=user_id))
+        db.commit()
+
+
+async def add_item(state):
+    async with state.proxy() as data:
+        cur.execute("INSERT INTO items (category, name, desc, price, photo) VALUES (?, ?, ?, ?, ?)",
+                    (data['category'], data['name'], data['desc'], data['price'], data['photo']))
+        db.commit()
+
+
+async def get_item(item_id):
+    item = cur.execute("SELECT * FROM items WHERE ite_id=?", (item_id,)).fetchone()
+    return item
+
+
+async def delete_item(item_id):
+    cur.execute("DELETE FROM items WHERE ite_id=?", (item_id,))
+    db.commit()
+
+
+async def set_active(tg_id, active):
+    cur.execute("UPDATE accounts set active=? WHERE tg_id=?", (active, tg_id,))
+    db.commit()
+
+
+async def get_user():
+    users = cur.execute("SELECT tg_id, active FROM accounts").fetchall()
+    return users
+
+
+
+
+
+
