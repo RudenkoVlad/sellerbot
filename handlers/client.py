@@ -40,7 +40,7 @@ async def show_item(message: types.Message, item):
     item_info += f"Price: {item[4]}\n"
     item_info += f"Photo: {item[5]}"
 
-    await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info)
+    await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info, reply_markup=item_btn)
 
 
 @dp.callback_query_handler(lambda query: query.data in ['TV', 'phone', 'tablet', 'laptop', 'console', 'monitor'])
@@ -58,13 +58,9 @@ async def show_category_items(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(text=['previous_item', 'next_item'])
 async def navigate_items(callback_query: types.CallbackQuery):
-    item_id = int(callback_query.message.text.split('ID: ')[1].split('\n')[0])
-    category = callback_query.message.text.split('Category: ')[1].split('\n')[0]
+    item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
+    category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
     items = await db.get_items_by_category(category)
-
-    if not items:
-        await bot.send_message(callback_query.from_user.id, "No items found in this category.")
-        return
 
     current_index = next((index for index, item in enumerate(items) if item['ite_id'] == item_id), None)
 
