@@ -40,17 +40,22 @@ async def show_item(message: types.Message, item):
     item_info += f"Price: {item[4]}\n"
     item_info += f"Photo: {item[5]}"
 
-    await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info, reply_markup=item_btn)
+    if message.photo:
+        await bot.edit_message_caption(chat_id=message.chat.id, message_id=message.message_id, caption=item_info,
+                                       reply_markup=item_btn)
+        await bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                                     media=types.InputMediaPhoto(media=item[5], caption=item_info),
+                                     reply_markup=item_btn)
+    else:
+        await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info, reply_markup=item_btn)
 
 
 @dp.callback_query_handler(lambda query: query.data in ['TV', 'phone', 'tablet', 'laptop', 'console', 'monitor'])
 async def show_category_items(callback_query: types.CallbackQuery):
     category = callback_query.data
-    # Get items for the selected category from the database
     items = await db.get_items_by_category(category)
 
     if items:
-        # Display the first item in the category
         await show_item(callback_query.message, items[0])
     else:
         await bot.send_message(callback_query.from_user.id, "No items found in this category.")
@@ -62,7 +67,7 @@ async def navigate_items(callback_query: types.CallbackQuery):
     category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
     items = await db.get_items_by_category(category)
 
-    current_index = next((index for index, item in enumerate(items) if item['ite_id'] == item_id), None)
+    current_index = next((index for index, item in enumerate(items) if item[0] == item_id), None)
 
     if current_index is not None:
         if callback_query.data == 'previous_item' and current_index > 0:
