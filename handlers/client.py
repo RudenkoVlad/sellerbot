@@ -1,9 +1,6 @@
 import os
 
 from aiogram import types
-from aiogram.dispatcher import FSMContext
-from aiogram.types import CallbackQuery
-
 from create_bot import dp, bot
 from keyboards.admin_kb import kb_admin
 from keyboards.client_kb import kb_client
@@ -25,6 +22,7 @@ async def cmd_start(message: types.Message):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+current_category_messages = {}
 
 
 @dp.message_handler(text='Каталог')
@@ -40,14 +38,14 @@ async def show_item(message: types.Message, item):
     item_info += f"Price: {item[4]}\n"
     item_info += f"Photo: {item[5]}"
 
-    if message.photo:
-        await bot.edit_message_caption(chat_id=message.chat.id, message_id=message.message_id, caption=item_info,
-                                       reply_markup=item_btn)
-        await bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+    if message.chat.id in current_category_messages:
+        await bot.edit_message_media(chat_id=message.chat.id, message_id=current_category_messages[message.chat.id],
                                      media=types.InputMediaPhoto(media=item[5], caption=item_info),
                                      reply_markup=item_btn)
     else:
-        await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info, reply_markup=item_btn)
+        sent_message = await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info,
+                                            reply_markup=item_btn)
+        current_category_messages[message.chat.id] = sent_message.message_id
 
 
 @dp.callback_query_handler(lambda query: query.data in ['TV', 'phone', 'tablet', 'laptop', 'console', 'monitor'])
