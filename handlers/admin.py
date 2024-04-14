@@ -4,19 +4,11 @@ from aiogram import types
 import os
 from create_bot import dp
 from keyboards.admin_kb import admin_panel, kb_admin
-from keyboards.catalog_kb import catalog_list
+from keyboards.catalog_kb import show_catalog
 from aiogram.dispatcher.filters import Text
 from database import database as db
 from keyboards.mailing_kb import kb_mailing, btn_next_and_cancel, btn_cancel
 from asyncio import sleep
-
-
-class NewOrder(StatesGroup):
-    type = State()
-    name = State()
-    desc = State()
-    price = State()
-    photo = State()
 
 
 @dp.message_handler(text='Панель адміністратора')
@@ -27,11 +19,58 @@ async def admin_btn(message: types.Message):
         await message.reply('Вам не доступна панель адміністрування')
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+class ManagerCategories(StatesGroup):
+    adding = State()
+    deleting = State()
+
+
+@dp.callback_query_handler(lambda query: query.data == 'add_category', state=None)
+async def add_category(callback_query: types.CallbackQuery):
+    await callback_query.answer()
+    await ManagerCategories.adding.set()
+    await callback_query.message.answer('Введіть назву нової категорії: ')
+
+
+@dp.callback_query_handler(lambda query: query.data == 'delete_category', state=None)
+async def delete_category(callback_query: types.CallbackQuery):
+    await callback_query.answer()
+    await ManagerCategories.deleting.set()
+    await callback_query.message.answer('Введіть айді категорії шо потрібно видалити')
+
+
+@dp.message_handler(state=ManagerCategories.adding)
+async def process_add_category(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['category_name'] = message.text
+    await db.add_category(data['category_name'])
+    await message.answer('Категорія успішно додана')
+    await state.finish()
+
+
+@dp.message_handler(state=ManagerCategories.deleting)
+async def process_delete_category(message: types.Message, state: FSMContext):
+    category_id = int(message.text)
+    await db.delete_categories(category_id)
+    await message.answer('Категорія успішно видалена.')
+    await state.finish()
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+class NewOrder(StatesGroup):
+    type = State()
+    name = State()
+    desc = State()
+    price = State()
+    photo = State()
+
+
 @dp.message_handler(text='Додати товар')
 async def add_item(message: types.Message):
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
         await NewOrder.type.set()
-        await message.answer('Виберіть тип товара', reply_markup=catalog_list)
+        await show_catalog(message)
     else:
         await message.reply('Додавати товар може тільки адміністратор')
 

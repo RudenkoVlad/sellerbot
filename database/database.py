@@ -17,6 +17,9 @@ async def db_start():
                 'desc TEXT,'
                 'price TEXT,'
                 'photo TEXT)')
+    cur.execute('CREATE TABLE IF NOT EXISTS categories('
+                'cat_id INTEGER PRIMARY KEY,'
+                'name TEXT)')
     db.commit()
 
 
@@ -57,6 +60,21 @@ async def get_user():
 async def get_items_by_category(category):
     items = cur.execute("SELECT * FROM items WHERE category=?", (category,)).fetchall()
     return items
+
+
+async def add_category(name):
+    cur.execute('INSERT INTO categories (name) VALUES (?)', (name,))
+    db.commit()
+
+
+async def delete_categories(cat_id):
+    cur.execute('DELETE FROM categories WHERE cat_id=?', (cat_id,))
+    db.commit()
+
+
+async def get_all_categories():
+    categories = cur.execute('SELECT * FROM categories').fetchall()
+    return categories
 
 
 

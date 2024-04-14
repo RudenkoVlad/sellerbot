@@ -1,10 +1,12 @@
 import os
 
 from aiogram import types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from create_bot import dp, bot
 from keyboards.admin_kb import kb_admin
 from keyboards.client_kb import kb_client
-from keyboards.catalog_kb import catalog_list, item_btn
+from keyboards.catalog_kb import item_btn, manager_categories_buttons, show_catalog
 
 from database import database as db
 
@@ -24,10 +26,13 @@ async def cmd_start(message: types.Message):
 # ----------------------------------------------------------------------------------------------------------------------
 current_category_messages = {}
 
-
 @dp.message_handler(text='Каталог')
 async def catalog(message: types.Message):
-    await message.answer('Виберіть категорію, щоб побачити товари: ', reply_markup=catalog_list)
+    if message.from_user.id == int(os.getenv('ADMIN_ID')):
+        await message.answer('Виберіть опцію: ', reply_markup=manager_categories_buttons)
+        await show_catalog(message)
+    else:
+        await message.answer('Виберіть категорію, щоб побачити товари: ')
 
 
 async def show_item(message: types.Message, item):
