@@ -1,8 +1,6 @@
 import os
 
 from aiogram import types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
 from create_bot import dp, bot
 from keyboards.admin_kb import kb_admin
 from keyboards.client_kb import kb_client
@@ -26,13 +24,14 @@ async def cmd_start(message: types.Message):
 # ----------------------------------------------------------------------------------------------------------------------
 current_category_messages = {}
 
+
 @dp.message_handler(text='Каталог')
 async def catalog(message: types.Message):
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
         await message.answer('Виберіть опцію: ', reply_markup=manager_categories_buttons)
         await show_catalog(message)
     else:
-        await message.answer('Виберіть категорію, щоб побачити товари: ')
+        await show_catalog(message)
 
 
 async def show_item(message: types.Message, item):
@@ -53,7 +52,19 @@ async def show_item(message: types.Message, item):
         current_category_messages[message.chat.id] = sent_message.message_id
 
 
-@dp.callback_query_handler(lambda query: query.data in ['TV', 'phone', 'tablet', 'laptop', 'console', 'monitor'])
+# @dp.callback_query_handler(lambda query: query.data.isdigit())
+# async def show_category_items(callback_query: types.CallbackQuery):
+#     category = callback_query.data
+#     items = await db.get_items_by_category(category)
+#
+#     if items:
+#         await show_item(callback_query.message, items[0])
+#     else:
+#         # await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id + 1)
+#         await callback_query.answer('В цій категорії товарів не знайдено')
+
+
+@dp.callback_query_handler(lambda query: query.data.isdigit())
 async def show_category_items(callback_query: types.CallbackQuery):
     category = callback_query.data
     items = await db.get_items_by_category(category)
@@ -61,7 +72,11 @@ async def show_category_items(callback_query: types.CallbackQuery):
     if items:
         await show_item(callback_query.message, items[0])
     else:
-        await bot.send_message(callback_query.from_user.id, "No items found in this category.")
+        if callback_query.message.chat.id in current_category_messages:
+            await bot.delete_message(callback_query.message.chat.id,
+                                     current_category_messages[callback_query.message.chat.id])
+            del current_category_messages[callback_query.message.chat.id]
+        await callback_query.answer('В цій категорії товарів не знайдено')
 
 
 @dp.callback_query_handler(text=['previous_item', 'next_item'])
@@ -79,10 +94,12 @@ async def navigate_items(callback_query: types.CallbackQuery):
             await show_item(callback_query.message, items[current_index + 1])
 
 
+
+
+
 @dp.callback_query_handler(text='cancel')
 async def cancel(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id, "Операцію скасовано.")
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
