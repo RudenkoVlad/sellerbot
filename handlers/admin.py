@@ -4,7 +4,7 @@ from aiogram import types
 import os
 from create_bot import dp
 from keyboards.admin_kb import admin_panel, kb_admin
-from keyboards.catalog_kb import show_catalog
+from keyboards.catalog_kb import create_keyboard_catalog
 from aiogram.dispatcher.filters import Text
 from database import database as db
 from keyboards.mailing_kb import kb_mailing, btn_next_and_cancel, btn_cancel
@@ -25,18 +25,18 @@ class ManagerCategories(StatesGroup):
     deleting = State()
 
 
-@dp.callback_query_handler(lambda query: query.data == 'add_category', state=None)
-async def add_category(callback_query: types.CallbackQuery):
-    await callback_query.answer()
+@dp.message_handler(text='Додати категорію')
+async def add_category(message: types.Message):
     await ManagerCategories.adding.set()
-    await callback_query.message.answer('Введіть назву нової категорії: ')
+    await message.reply('Введіть назву нової категорії: ')
 
 
-@dp.callback_query_handler(lambda query: query.data == 'delete_category', state=None)
-async def delete_category(callback_query: types.CallbackQuery):
-    await callback_query.answer()
+@dp.message_handler(text='Видалити категорію')
+async def delete_category(message: types.Message):
     await ManagerCategories.deleting.set()
-    await callback_query.message.answer('Введіть айді категорії шо потрібно видалити')
+    categories = await db.get_all_categories()
+    keyboard = await create_keyboard_catalog(categories)
+    await message.answer('Виберіть категорію, яку потрібно видалити: ', reply_markup=keyboard)
 
 
 @dp.message_handler(state=ManagerCategories.adding)
@@ -44,15 +44,19 @@ async def process_add_category(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['category_name'] = message.text
     await db.add_category(data['category_name'])
-    await message.answer('Категорія успішно додана')
+    categories = await db.get_all_categories()
+    keyboard = await create_keyboard_catalog(categories)
+    await message.answer('Категорія успішно додана. Тепер каталог виглядає так: ', reply_markup=keyboard)
     await state.finish()
 
 
-@dp.message_handler(state=ManagerCategories.deleting)
-async def process_delete_category(message: types.Message, state: FSMContext):
-    category_id = int(message.text)
+@dp.callback_query_handler(lambda callback_query: True, state=ManagerCategories.deleting)
+async def process_delete_category_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    category_id = callback_query.data
     await db.delete_categories(category_id)
-    await message.answer('Категорія успішно видалена.')
+    categories = await db.get_all_categories()
+    keyboard = await create_keyboard_catalog(categories)
+    await callback_query.message.answer('Категорія успішно видалена. Тепер каталог виглядає так:', reply_markup=keyboard)
     await state.finish()
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -70,7 +74,9 @@ class NewOrder(StatesGroup):
 async def add_item(message: types.Message):
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
         await NewOrder.type.set()
-        await show_catalog(message)
+        categories = await db.get_all_categories()
+        keyboard = await create_keyboard_catalog(categories)
+        await message.answer('Виберіть до якої категорії належить ваш товар: ', reply_markup=keyboard)
     else:
         await message.reply('Додавати товар може тільки адміністратор')
 
@@ -166,6 +172,7 @@ async def confirm_del_item(message: types.Message, state: FSMContext):
     await state.finish()
 
 
+# ----------------------------------------------------------------------------------------------------------------------
 class BotMailing(StatesGroup):
     text = State()
     state = State()

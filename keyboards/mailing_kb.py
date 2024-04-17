@@ -9,5 +9,5 @@ btn_next_and_cancel = InlineKeyboardMarkup(row_width=2)
 btn_next_and_cancel.add(InlineKeyboardButton(text='Далі', callback_data='next'),
                         InlineKeyboardButton(text='Відміна', callback_data='cancel'))
 
-btn_cancel = InlineKeyboardMarkup(row_width=2)
+btn_cancel = InlineKeyboardMarkup(row_width=1)
 btn_cancel.add(InlineKeyboardButton(text='Відмінити', callback_data='cancel'))

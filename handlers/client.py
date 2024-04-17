@@ -2,15 +2,20 @@ import os
 
 from aiogram import types
 from create_bot import dp, bot
-from keyboards.admin_kb import kb_admin
-from keyboards.client_kb import kb_client
-from keyboards.catalog_kb import item_btn, manager_categories_buttons, show_catalog
+from keyboards.admin_kb import kb_admin, item_btn_admin
+from keyboards.client_kb import kb_client, item_btn_client
+from keyboards.catalog_kb import create_keyboard_catalog
 
 from database import database as db
+
+save_id = None
 
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
+    global save_id
+    save_id = message.from_user.id
+
     await db.add_user(message.from_user.id)
 
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
@@ -30,11 +35,16 @@ async def catalog(message: types.Message):
     global current_category_messages
     current_category_messages = {}
 
-    if message.from_user.id == int(os.getenv('ADMIN_ID')):
-        await message.answer('Виберіть опцію: ', reply_markup=manager_categories_buttons)
-        await show_catalog(message)
+    await show_catalog(message)
+
+
+async def show_catalog(message: types.Message):
+    categories = await db.get_all_categories()
+    if categories:
+        keyboard = await create_keyboard_catalog(categories)
+        await message.answer('Виберіть категорію, щоб побачити товар: ', reply_markup=keyboard)
     else:
-        await show_catalog(message)
+        await message.answer('Немає доступних категорій')
 
 
 async def show_item(message: types.Message, item):
@@ -45,13 +55,15 @@ async def show_item(message: types.Message, item):
     item_info += f"Price: {item[4]}\n"
     item_info += f"Photo: {item[5]}"
 
+    keyboard = item_btn_admin if save_id == int(os.getenv('ADMIN_ID')) else item_btn_client
+
     if message.chat.id in current_category_messages:
         await bot.edit_message_media(chat_id=message.chat.id, message_id=current_category_messages[message.chat.id],
                                      media=types.InputMediaPhoto(media=item[5], caption=item_info),
-                                     reply_markup=item_btn)
+                                     reply_markup=keyboard)
     else:
         sent_message = await bot.send_photo(chat_id=message.chat.id, photo=item[5], caption=item_info,
-                                            reply_markup=item_btn)
+                                            reply_markup=keyboard)
         current_category_messages[message.chat.id] = sent_message.message_id
 
 
@@ -88,6 +100,7 @@ async def navigate_items(callback_query: types.CallbackQuery):
 @dp.callback_query_handler(text='cancel')
 async def cancel(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id, "Операцію скасовано.")
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
