@@ -13,9 +13,6 @@ save_id = None
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    global save_id
-    save_id = message.from_user.id
-
     await db.add_user(message.from_user.id)
 
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
@@ -39,7 +36,11 @@ async def catalog(message: types.Message):
 
 
 async def show_catalog(message: types.Message):
+    global save_id
+    save_id = message.from_user.id
+
     categories = await db.get_all_categories()
+
     if categories:
         keyboard = await create_keyboard_catalog(categories)
         await message.answer('Виберіть категорію, щоб побачити товар: ', reply_markup=keyboard)
@@ -53,7 +54,7 @@ async def show_item(message: types.Message, item):
     item_info += f"Name: {item[2]}\n"
     item_info += f"Description: {item[3]}\n"
     item_info += f"Price: {item[4]}\n"
-    item_info += f"Photo: {item[5]}"
+    # item_info += f"Photo: {item[5]}"
 
     keyboard = item_btn_admin if save_id == int(os.getenv('ADMIN_ID')) else item_btn_client
 

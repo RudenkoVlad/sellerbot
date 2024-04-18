@@ -2,7 +2,8 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram import types
 import os
-from create_bot import dp
+from create_bot import dp, bot
+from handlers.client import show_item
 from keyboards.admin_kb import admin_panel, kb_admin
 from keyboards.catalog_kb import create_keyboard_catalog
 from aiogram.dispatcher.filters import Text
@@ -145,31 +146,19 @@ async def add_item_photo(message: types.Message, state: FSMContext):
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class DeleteItem(StatesGroup):
-    delete_item = State()
-
-
-@dp.message_handler(text='Видалити товар')
-async def del_item(message: types.Message):
-    if message.from_user.id == int(os.getenv('ADMIN_ID')):
-        await message.answer('Введіть ID товару, який потрібно видалити:')
-        await DeleteItem.delete_item.set()
-    else:
-        await message.reply('Вам не доступне видалення товарів')
-
-
-@dp.message_handler(state=DeleteItem.delete_item)
-async def confirm_del_item(message: types.Message, state: FSMContext):
-    item_id = message.text
-    item = await db.get_item(item_id)
-
-    if item:
+@dp.callback_query_handler(text='delete_item')
+async def delete_item_callback(callback_query: types.CallbackQuery):
+    if callback_query.from_user.id == int(os.getenv('ADMIN_ID')):
+        item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
         await db.delete_item(item_id)
-        await message.answer(f'Товар з ID "{item_id}" був успішно видалений!', reply_markup=admin_panel)
-    else:
-        await message.answer(f'Товар з ID "{item_id}" не знайдено!', reply_markup=admin_panel)
+        # оновлення товарів категорії з каталогу
+        await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
 
-    await state.finish()
+
+        # --------------------------------------
+        await callback_query.answer(f'Товар з ID "{item_id}" був успішно видалений!')
+    else:
+        await callback_query.answer('Вам не доступне видалення товарів')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
