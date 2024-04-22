@@ -3,7 +3,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram import types
 import os
 from create_bot import dp, bot
-from handlers.client import show_item
+from handlers.client import current_category_messages, show_items_in_categories
 from keyboards.admin_kb import admin_panel, kb_admin
 from keyboards.catalog_kb import create_keyboard_catalog
 from aiogram.dispatcher.filters import Text
@@ -151,12 +151,15 @@ async def delete_item_callback(callback_query: types.CallbackQuery):
     if callback_query.from_user.id == int(os.getenv('ADMIN_ID')):
         item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
         await db.delete_item(item_id)
-        # оновлення товарів категорії з каталогу
-        await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
 
+        # if callback_query.message.chat.id in current_category_messages:
+        #     await bot.delete_message(callback_query.message.chat.id,
+        #                              current_category_messages[callback_query.message.chat.id])
+        #     del current_category_messages[callback_query.message.chat.id]
 
-        # --------------------------------------
-        await callback_query.answer(f'Товар з ID "{item_id}" був успішно видалений!')
+        category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
+
+        await show_items_in_categories(callback_query.message, category)
     else:
         await callback_query.answer('Вам не доступне видалення товарів')
 

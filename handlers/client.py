@@ -68,19 +68,23 @@ async def show_item(message: types.Message, item):
         current_category_messages[message.chat.id] = sent_message.message_id
 
 
-@dp.callback_query_handler(lambda query: query.data.isdigit())
-async def show_category_items(callback_query: types.CallbackQuery):
-    category = callback_query.data
+async def show_items_in_categories(message: types.Message, category: str):
     items = await db.get_items_by_category(category)
 
     if items:
-        await show_item(callback_query.message, items[0])
+        await show_item(message, items[0])
     else:
-        if callback_query.message.chat.id in current_category_messages:
-            await bot.delete_message(callback_query.message.chat.id,
-                                     current_category_messages[callback_query.message.chat.id])
-            del current_category_messages[callback_query.message.chat.id]
-        await callback_query.answer('В цій категорії товарів не знайдено')
+        if message.chat.id in current_category_messages:
+            await bot.delete_message(message.chat.id,
+                                     current_category_messages[message.chat.id])
+            del current_category_messages[message.chat.id]
+        await message.answer('В цій категорії товарів не знайдено')
+
+
+@dp.callback_query_handler(lambda query: query.data.isdigit())
+async def show_category_items(callback_query: types.CallbackQuery):
+    category = callback_query.data
+    await show_items_in_categories(callback_query.message, category)
 
 
 @dp.callback_query_handler(text=['previous_item', 'next_item'])
