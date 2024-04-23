@@ -5,6 +5,7 @@ from create_bot import dp, bot
 from keyboards.admin_kb import kb_admin, item_btn_admin
 from keyboards.client_kb import kb_client, item_btn_client
 from keyboards.catalog_kb import create_keyboard_catalog
+from keyboards.cart_kb import cart_btn
 
 from database import database as db
 
@@ -13,6 +14,9 @@ save_id = None
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
+    global save_id
+    save_id = message.from_user.id
+
     await db.add_user(message.from_user.id)
 
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
@@ -36,9 +40,6 @@ async def catalog(message: types.Message):
 
 
 async def show_catalog(message: types.Message):
-    global save_id
-    save_id = message.from_user.id
-
     categories = await db.get_all_categories()
 
     if categories:
@@ -47,11 +48,20 @@ async def show_catalog(message: types.Message):
     else:
         await message.answer('Немає доступних категорій')
 
+item_data = {
+    "item_id": None,
+    "category_id": None
+}
+
 
 async def show_item(message: types.Message, item):
-    item_info = f"ID: {item[0]}\n"
-    item_info += f"Category: {item[1]}\n"
-    item_info += f"Name: {item[2]}\n"
+    global item_data
+    item_data["item_id"] = item[0]
+    item_data["category_id"] = item[1]
+
+    # item_info = f"ID: {item[0]}\n"
+    # item_info += f"Category: {item[1]}\n"
+    item_info = f"Name: {item[2]}\n"
     item_info += f"Description: {item[3]}\n"
     item_info += f"Price: {item[4]}\n"
     # item_info += f"Photo: {item[5]}"
@@ -78,7 +88,7 @@ async def show_items_in_categories(message: types.Message, category: str):
             await bot.delete_message(message.chat.id,
                                      current_category_messages[message.chat.id])
             del current_category_messages[message.chat.id]
-        await message.answer('В цій категорії товарів не знайдено')
+        # await message.answer('В цій категорії товарів не знайдено')
 
 
 @dp.callback_query_handler(lambda query: query.data.isdigit())
@@ -89,17 +99,23 @@ async def show_category_items(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(text=['previous_item', 'next_item'])
 async def navigate_items(callback_query: types.CallbackQuery):
-    item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
-    category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
-    items = await db.get_items_by_category(category)
+    # item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
+    # category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
+    items = await db.get_items_by_category( item_data["category_id"])
 
-    current_index = next((index for index, item in enumerate(items) if item[0] == item_id), None)
+    current_index = next((index for index, item in enumerate(items) if item[0] == item_data["item_id"]), None)
 
     if current_index is not None:
         if callback_query.data == 'previous_item' and current_index > 0:
             await show_item(callback_query.message, items[current_index - 1])
         elif callback_query.data == 'next_item' and current_index < len(items) - 1:
             await show_item(callback_query.message, items[current_index + 1])
+
+
+@dp.callback_query_handler(text='add_to_cart')
+async def add_item_to_cart(callback_query: types.CallbackQuery):
+    await db.add_to_cart(save_id, item_data["item_id"])
+    await callback_query.message.answer('Товар додано до кошика')
 
 
 @dp.callback_query_handler(text='cancel')
@@ -112,7 +128,7 @@ async def cancel(callback_query: types.CallbackQuery):
 
 @dp.message_handler(text='Кошик')
 async def basket(message: types.Message):
-    await message.answer('Кошик пустий!')
+    await message.answer('Кошик пустий!', reply_markup=cart_btn)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

@@ -20,6 +20,10 @@ async def db_start():
     cur.execute('CREATE TABLE IF NOT EXISTS categories('
                 'cat_id INTEGER PRIMARY KEY,'
                 'name TEXT)')
+    cur.execute('CREATE TABLE IF NOT EXISTS cart('
+                'card_id INTEGER PRIMARY KEY,'
+                'tg_id INTEGER,'
+                'item_id INTEGER)')
     db.commit()
 
 
@@ -77,5 +81,12 @@ async def get_all_categories():
     return categories
 
 
+async def add_to_cart(tg_id, item_id):
+    cur.execute('INSERT INTO cart (tg_id, item_id) VALUES (?, ?)', (tg_id, item_id))
+    db.commit()
+
+
+async def show_item_in_cart(tg_id):
+    cur.execute('SELECT * FROM cart WHERE tg_id=?'), (tg_id,)
 
 

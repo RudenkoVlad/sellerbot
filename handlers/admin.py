@@ -2,8 +2,8 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram import types
 import os
-from create_bot import dp, bot
-from handlers.client import current_category_messages, show_items_in_categories
+from create_bot import dp
+from handlers.client import show_items_in_categories, item_data
 from keyboards.admin_kb import admin_panel, kb_admin
 from keyboards.catalog_kb import create_keyboard_catalog
 from aiogram.dispatcher.filters import Text
@@ -14,10 +14,13 @@ from asyncio import sleep
 
 @dp.message_handler(text='Панель адміністратора')
 async def admin_btn(message: types.Message):
+
     if message.from_user.id == int(os.getenv('ADMIN_ID')):
         await message.answer('Що потрібно зробити адмін?', reply_markup=admin_panel)
     else:
         await message.reply('Вам не доступна панель адміністрування')
+    # print(item_id)
+    # print(category_id)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -53,8 +56,8 @@ async def process_add_category(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(lambda callback_query: True, state=ManagerCategories.deleting)
 async def process_delete_category_callback(callback_query: types.CallbackQuery, state: FSMContext):
-    category_id = callback_query.data
-    await db.delete_categories(category_id)
+    category_id_del = callback_query.data
+    await db.delete_categories(category_id_del)
     categories = await db.get_all_categories()
     keyboard = await create_keyboard_catalog(categories)
     await callback_query.message.answer('Категорія успішно видалена. Тепер каталог виглядає так:', reply_markup=keyboard)
@@ -149,17 +152,17 @@ async def add_item_photo(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(text='delete_item')
 async def delete_item_callback(callback_query: types.CallbackQuery):
     if callback_query.from_user.id == int(os.getenv('ADMIN_ID')):
-        item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
-        await db.delete_item(item_id)
+        # item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
+        await db.delete_item(item_data["item_id"])
 
         # if callback_query.message.chat.id in current_category_messages:
         #     await bot.delete_message(callback_query.message.chat.id,
         #                              current_category_messages[callback_query.message.chat.id])
         #     del current_category_messages[callback_query.message.chat.id]
 
-        category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
+        # category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
 
-        await show_items_in_categories(callback_query.message, category)
+        await show_items_in_categories(callback_query.message, item_data["category_id"])
     else:
         await callback_query.answer('Вам не доступне видалення товарів')
 
