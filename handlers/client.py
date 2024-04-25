@@ -1,6 +1,8 @@
 import os
 
 from aiogram import types
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from create_bot import dp, bot
 from keyboards.admin_kb import kb_admin, item_btn_admin
 from keyboards.client_kb import kb_client, item_btn_client
@@ -114,8 +116,13 @@ async def navigate_items(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(text='add_to_cart')
 async def add_item_to_cart(callback_query: types.CallbackQuery):
-    await db.add_to_cart(save_id, item_data["item_id"])
-    await callback_query.message.answer('Товар додано до кошика')
+    cart_items = await db.get_items_in_cart(save_id)
+
+    if item_data["item_id"] in cart_items:
+        await callback_query.answer('Товар вже знаходиться в кошику')
+    else:
+        await db.add_to_cart(save_id, item_data["item_id"])
+        await callback_query.answer('Товар додано до кошика')
 
 
 @dp.callback_query_handler(text='cancel')
@@ -124,12 +131,55 @@ async def cancel(callback_query: types.CallbackQuery):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+async def display_basket(message: types.Message):
+    summa = 0
+    cart_items = await db.get_items_in_cart(save_id)
+
+    if not cart_items:
+        await message.answer('Кошик пустий!')
+    else:
+        response = "Ваш кошик:\n"
+        for item_id in cart_items:
+            item = await db.get_item(item_id)
+            response += f"ID: {item_id}, Назва: {item[2]}\nЦіна: {item[4]}\n\n"
+            summa += int(item[4])
+        response += f"Всього: {summa}"
+        await message.answer(response, reply_markup=cart_btn)
 
 
 @dp.message_handler(text='Кошик')
 async def basket(message: types.Message):
-    await message.answer('Кошик пустий!', reply_markup=cart_btn)
+    await display_basket(message)
 
+
+@dp.callback_query_handler(text='clear_cart')
+async def clear_cart(callback_query: types.CallbackQuery):
+    await db.delete_items_from_cart(save_id)
+    await callback_query.answer('Кошик очищено')
+
+
+class DeleteItemFromCart(StatesGroup):
+    item_id = State()
+
+
+@dp.callback_query_handler(text='delete_item_from_cart')
+async def delete_item_query(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.answer('Введіть ID товару, який ви хочете видалити з кошика:')
+    await DeleteItemFromCart.item_id.set()
+
+
+@dp.message_handler(state=DeleteItemFromCart.item_id)
+async def delete_item(message: types.Message, state: FSMContext):
+    item_id = int(message.text)
+    await db.delete_item_from_cart(save_id, item_id)
+    await message.answer(f'Товар з ID {item_id} був видалений з кошика')
+    await state.finish()
+    await display_basket(message)
+
+
+@dp.callback_query_handler(text='to_pay')
+async def to_pay(callback_query: types.CallbackQuery):
+    await callback_query.answer('Оплата знаходиться в розробці')
 
 # ----------------------------------------------------------------------------------------------------------------------
 

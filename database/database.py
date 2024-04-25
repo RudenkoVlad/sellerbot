@@ -90,3 +90,17 @@ async def show_item_in_cart(tg_id):
     cur.execute('SELECT * FROM cart WHERE tg_id=?'), (tg_id,)
 
 
+async def get_items_in_cart(tg_id):
+    items = cur.execute("SELECT item_id FROM cart WHERE tg_id=?", (tg_id,)).fetchall()
+    return [item[0] for item in items]
+
+
+async def delete_items_from_cart(tg_id):
+    cur.execute('DELETE FROM cart WHERE tg_id=?', (tg_id,)).fetchall()
+    db.commit()
+
+
+async def delete_item_from_cart(tg_id, item_id):
+    cur.execute('DELETE FROM cart WHERE tg_id=? AND item_id=?', (tg_id, item_id))
+    db.commit()
+
