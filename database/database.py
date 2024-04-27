@@ -8,7 +8,7 @@ async def db_start():
     cur.execute('CREATE TABLE IF NOT EXISTS accounts('
                 'id INTEGER PRIMARY KEY AUTOINCREMENT,'
                 'tg_id INTEGER,'
-                'card_id INTEGER,'
+                'cart_id INTEGER,'
                 'active BOOLEAN DEFAULT(TRUE))')
     cur.execute('CREATE TABLE IF NOT EXISTS items('
                 'ite_id INTEGER PRIMARY KEY AUTOINCREMENT,'
@@ -21,7 +21,7 @@ async def db_start():
                 'cat_id INTEGER PRIMARY KEY,'
                 'name TEXT)')
     cur.execute('CREATE TABLE IF NOT EXISTS cart('
-                'card_id INTEGER PRIMARY KEY,'
+                'cart_id INTEGER PRIMARY KEY,'
                 'tg_id INTEGER,'
                 'item_id INTEGER)')
     db.commit()
@@ -76,6 +76,11 @@ async def delete_categories(cat_id):
     db.commit()
 
 
+async def delete_item_from_category(category):
+    cur.execute('DELETE FROM items WHERE category=?', (category,))
+    db.commit()
+
+
 async def get_all_categories():
     categories = cur.execute('SELECT * FROM categories').fetchall()
     return categories
@@ -86,8 +91,8 @@ async def add_to_cart(tg_id, item_id):
     db.commit()
 
 
-async def show_item_in_cart(tg_id):
-    cur.execute('SELECT * FROM cart WHERE tg_id=?'), (tg_id,)
+# async def show_item_in_cart(tg_id):
+#     cur.execute('SELECT * FROM cart WHERE tg_id=?'), (tg_id,)
 
 
 async def get_items_in_cart(tg_id):

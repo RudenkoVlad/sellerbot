@@ -3,6 +3,9 @@ import os
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
+from openpyxl.reader.excel import load_workbook
+from openpyxl.workbook import Workbook
+
 from create_bot import dp, bot
 from keyboards.admin_kb import kb_admin, item_btn_admin
 from keyboards.client_kb import kb_client, item_btn_client
@@ -10,6 +13,7 @@ from keyboards.catalog_kb import create_keyboard_catalog
 from keyboards.cart_kb import cart_btn
 
 from database import database as db
+
 
 save_id = None
 
@@ -131,19 +135,23 @@ async def cancel(callback_query: types.CallbackQuery):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+summa = 0
+
+
 async def display_basket(message: types.Message):
+    global summa
     summa = 0
     cart_items = await db.get_items_in_cart(save_id)
 
     if not cart_items:
         await message.answer('Кошик пустий!')
     else:
-        response = "Ваш кошик:\n"
+        response = "🛒 Ваш кошик:\n"
         for item_id in cart_items:
             item = await db.get_item(item_id)
-            response += f"ID: {item_id}, Назва: {item[2]}\nЦіна: {item[4]}\n\n"
+            response += f"ID: {item_id}\nНазва: {item[2]}\nЦіна: {item[4]}\n\n"
             summa += int(item[4])
-        response += f"Всього: {summa}"
+        response += f"💰 Всього: {summa}"
         await message.answer(response, reply_markup=cart_btn)
 
 
@@ -156,6 +164,11 @@ async def basket(message: types.Message):
 async def clear_cart(callback_query: types.CallbackQuery):
     await db.delete_items_from_cart(save_id)
     await callback_query.answer('Кошик очищено')
+
+    cart_item = await db.get_items_in_cart(save_id)
+    if not cart_item:
+        await callback_query.message.delete()
+        await callback_query.message.answer('Ваш кошик пустий')
 
 
 class DeleteItemFromCart(StatesGroup):
@@ -177,9 +190,82 @@ async def delete_item(message: types.Message, state: FSMContext):
     await display_basket(message)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 @dp.callback_query_handler(text='to_pay')
 async def to_pay(callback_query: types.CallbackQuery):
-    await callback_query.answer('Оплата знаходиться в розробці')
+    await bot.send_invoice(callback_query.message.chat.id, 'Покупка товарів', 'Покупка товарів в телеграм-магазині',
+                           'invoice', os.getenv('PAYMENT_TOKEN'), 'USD', [types.LabeledPrice('Покупка товарів', summa * 100)],
+                           need_email=True, need_phone_number=True, need_shipping_address=True)
+
+
+@dp.pre_checkout_query_handler(lambda query: True)
+async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
+
+
+# @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
+# async def successful_payment(message: types.Message):
+#     print("SUCCESSFUL PAYMENT:")
+#     payment_info = message.successful_payment.to_python()
+#     for k, v in payment_info.items():
+#         print(f"{k} = {v}")
+#
+#     await bot.send_message(message.chat.id,
+#                            f"Платіж на суму  {message.successful_payment.total_amount // 100} "
+#                            f"{message.successful_payment.currency} пройшов успішно!!!")
+
+@dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
+async def successful_payment(message: types.Message):
+    payment_info = message.successful_payment.to_python()
+
+    # Dividing total_amount by 100
+    payment_info['total_amount'] = payment_info.get('total_amount', 0) / 100
+
+    # Load existing data from the file if it exists
+    try:
+        workbook = load_workbook('payment_info.xlsx')
+        sheet = workbook.active
+    except FileNotFoundError:
+        # If the file doesn't exist, create a new workbook and select the active worksheet
+        workbook = Workbook()
+        sheet = workbook.active
+        # Write headers
+        sheet.append(['currency', 'total_amount', 'ordered_items', 'invoice_payload', 'phone_number', 'email', 'country_code', 'state', 'city', 'street_line1', 'street_line2', 'post_code', 'telegram_payment_charge_id', 'provider_payment_charge_id'])
+
+    # Extract ordered items
+    ordered_items = ''
+    cart_items = await db.get_items_in_cart(save_id)
+    for item_id in cart_items:
+        item = await db.get_item(item_id)
+        ordered_items += f"{item[2]} ({item[4]}), "
+
+    # Write payment information excluding order_info
+    order_info = payment_info.pop('order_info')
+    order_info_values = [order_info.get('phone_number', ''),
+                         order_info.get('email', ''),
+                         order_info.get('shipping_address', {}).get('country_code', ''),
+                         order_info.get('shipping_address', {}).get('state', ''),
+                         order_info.get('shipping_address', {}).get('city', ''),
+                         order_info.get('shipping_address', {}).get('street_line1', ''),
+                         order_info.get('shipping_address', {}).get('street_line2', ''),
+                         order_info.get('shipping_address', {}).get('post_code', '')]
+
+    sheet.append([payment_info.get('currency', ''),
+                  payment_info.get('total_amount', ''),
+                  ordered_items.rstrip(', '),  # Remove trailing comma and space
+                  payment_info.get('invoice_payload', '')] + order_info_values +
+                 [payment_info.get('telegram_payment_charge_id', ''),
+                  payment_info.get('provider_payment_charge_id', '')])
+
+    # Save the workbook
+    workbook.save('payment_info.xlsx')
+
+    await bot.send_message(message.chat.id,
+                           f"Платіж на суму {message.successful_payment.total_amount // 100} "
+                           f"{message.successful_payment.currency} пройшов успішно!!!")
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

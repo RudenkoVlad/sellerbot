@@ -19,8 +19,6 @@ async def admin_btn(message: types.Message):
         await message.answer('Що потрібно зробити адмін?', reply_markup=admin_panel)
     else:
         await message.reply('Вам не доступна панель адміністрування')
-    # print(item_id)
-    # print(category_id)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -60,7 +58,14 @@ async def process_delete_category_callback(callback_query: types.CallbackQuery, 
     await db.delete_categories(category_id_del)
     categories = await db.get_all_categories()
     keyboard = await create_keyboard_catalog(categories)
-    await callback_query.message.answer('Категорія успішно видалена. Тепер каталог виглядає так:', reply_markup=keyboard)
+
+    if not categories:
+        await callback_query.message.delete()
+        await callback_query.message.answer('Категорій більше не існує, всі категорії видалені')
+    else:
+        await callback_query.message.answer('Категорія успішно видалена. Тепер каталог виглядає так:', reply_markup=keyboard)
+
+    await db.delete_item_from_category(category_id_del)
     await state.finish()
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -152,16 +157,7 @@ async def add_item_photo(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(text='delete_item')
 async def delete_item_callback(callback_query: types.CallbackQuery):
     if callback_query.from_user.id == int(os.getenv('ADMIN_ID')):
-        # item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
         await db.delete_item(item_data["item_id"])
-
-        # if callback_query.message.chat.id in current_category_messages:
-        #     await bot.delete_message(callback_query.message.chat.id,
-        #                              current_category_messages[callback_query.message.chat.id])
-        #     del current_category_messages[callback_query.message.chat.id]
-
-        # category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
-
         await show_items_in_categories(callback_query.message, item_data["category_id"])
     else:
         await callback_query.answer('Вам не доступне видалення товарів')
