@@ -15,7 +15,7 @@ async def db_start():
                 'category TEXT,'
                 'name TEXT,'
                 'desc TEXT,'
-                'price TEXT,'
+                'price INTEGER,'
                 'photo TEXT)')
     cur.execute('CREATE TABLE IF NOT EXISTS categories('
                 'cat_id INTEGER PRIMARY KEY,'
@@ -91,10 +91,6 @@ async def add_to_cart(tg_id, item_id):
     db.commit()
 
 
-# async def show_item_in_cart(tg_id):
-#     cur.execute('SELECT * FROM cart WHERE tg_id=?'), (tg_id,)
-
-
 async def get_items_in_cart(tg_id):
     items = cur.execute("SELECT item_id FROM cart WHERE tg_id=?", (tg_id,)).fetchall()
     return [item[0] for item in items]
@@ -108,4 +104,9 @@ async def delete_items_from_cart(tg_id):
 async def delete_item_from_cart(tg_id, item_id):
     cur.execute('DELETE FROM cart WHERE tg_id=? AND item_id=?', (tg_id, item_id))
     db.commit()
+
+
+async def get_items_by_price_range_and_category(min_price, max_price, category_id):
+    items = cur.execute("SELECT * FROM items WHERE category=? AND price BETWEEN ? AND ?", (category_id, min_price, max_price)).fetchall()
+    return items
 

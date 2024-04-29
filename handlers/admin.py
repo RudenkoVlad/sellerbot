@@ -2,6 +2,8 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram import types
 import os
+
+import handlers
 from create_bot import dp
 from handlers.client import show_items_in_categories, item_data
 from keyboards.admin_kb import admin_panel, kb_admin
@@ -156,11 +158,8 @@ async def add_item_photo(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(text='delete_item')
 async def delete_item_callback(callback_query: types.CallbackQuery):
-    if callback_query.from_user.id == int(os.getenv('ADMIN_ID')):
-        await db.delete_item(item_data["item_id"])
-        await show_items_in_categories(callback_query.message, item_data["category_id"])
-    else:
-        await callback_query.answer('Вам не доступне видалення товарів')
+    await db.delete_item(item_data["item_id"])
+    await show_items_in_categories(callback_query.message, item_data["category_id"])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -261,3 +260,28 @@ async def cancel(call: types.CallbackQuery, state: FSMContext):
 @dp.message_handler(text='Повернутися назад')
 async def back_to_kb_admin(message: types.Message):
     await message.answer('Повернення до головної клавіатури', reply_markup=kb_admin)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class ChangeInfoText(StatesGroup):
+    waiting_for_new_text = State()
+
+
+@dp.callback_query_handler(text="change_info")
+async def change_info_text(callback_query: types.CallbackQuery):
+    await ChangeInfoText.waiting_for_new_text.set()
+    await callback_query.message.answer("Введіть новий текст інфо.")
+
+
+@dp.message_handler(state=ChangeInfoText.waiting_for_new_text)
+async def process_new_info_text(message: types.Message, state: FSMContext):
+
+    handlers.client.info_text = message.text
+    await state.finish()
+    await message.answer("Текст інфо успішно змінено.")
+
+
+
+
+

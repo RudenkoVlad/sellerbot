@@ -11,9 +11,9 @@ from keyboards.admin_kb import kb_admin, item_btn_admin
 from keyboards.client_kb import kb_client, item_btn_client
 from keyboards.catalog_kb import create_keyboard_catalog
 from keyboards.cart_kb import cart_btn
+from keyboards.info_kb import info_change_btn
 
 from database import database as db
-
 
 save_id = None
 
@@ -33,6 +33,57 @@ async def cmd_start(message: types.Message):
             reply_markup=kb_client)
 
 
+# ----------------------------------------------------------------------------------------------------------------------#
+class SearchPriceState(StatesGroup):
+    waiting_for_category = State()
+    waiting_for_price_range = State()
+
+
+@dp.message_handler(text='Підбір товарів')
+async def search_by_price(message: types.Message):
+    await SearchPriceState.waiting_for_category.set()
+    await show_catalog(message)
+
+
+@dp.callback_query_handler(lambda query: query.data.isdigit(), state=SearchPriceState.waiting_for_category)
+async def handle_category_selection(callback_query: types.CallbackQuery, state: FSMContext):
+    category_id = int(callback_query.data)
+    await state.update_data(category_id=category_id)
+    await ask_price_range(callback_query.message)
+
+
+async def ask_price_range(message: types.Message):
+    await message.answer("Введіть ціновий діапазон у форматі 'мінімальна ціна - максимальна ціна', наприклад, 10-50:")
+    await SearchPriceState.waiting_for_price_range.set()
+
+min_max = {
+    'min': None,
+    'max': None,
+    'category_id': None
+}
+
+
+@dp.message_handler(state=SearchPriceState.waiting_for_price_range)
+async def handle_price_range_input(message: types.Message, state: FSMContext):
+    global min_max
+    current_category_messages.clear()
+    price_range = message.text.strip()
+    min_price, max_price = map(int, price_range.split('-'))
+    min_max['min'] = min_price
+    min_max['max'] = max_price
+    async with state.proxy() as data:
+        category_id = data.get('category_id')
+        min_max['category_id'] = category_id
+
+        items = await db.get_items_by_price_range_and_category(min_price, max_price, category_id)
+
+        if items:
+            await show_item(message, items[0])
+            await state.finish()
+        else:
+            await message.answer("Товарів у заданому ціновому діапазоні не знайдено.")
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 current_category_messages = {}
 
@@ -41,6 +92,9 @@ current_category_messages = {}
 async def catalog(message: types.Message):
     global current_category_messages
     current_category_messages = {}
+
+    for key in min_max:
+        min_max[key] = None
 
     await show_catalog(message)
 
@@ -54,6 +108,7 @@ async def show_catalog(message: types.Message):
     else:
         await message.answer('Немає доступних категорій')
 
+
 item_data = {
     "item_id": None,
     "category_id": None
@@ -65,14 +120,13 @@ async def show_item(message: types.Message, item):
     item_data["item_id"] = item[0]
     item_data["category_id"] = item[1]
 
-    # item_info = f"ID: {item[0]}\n"
-    # item_info += f"Category: {item[1]}\n"
     item_info = f"Name: {item[2]}\n"
     item_info += f"Description: {item[3]}\n"
     item_info += f"Price: {item[4]}\n"
-    # item_info += f"Photo: {item[5]}"
 
     keyboard = item_btn_admin if save_id == int(os.getenv('ADMIN_ID')) else item_btn_client
+
+    print(current_category_messages)
 
     if message.chat.id in current_category_messages:
         await bot.edit_message_media(chat_id=message.chat.id, message_id=current_category_messages[message.chat.id],
@@ -105,9 +159,13 @@ async def show_category_items(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(text=['previous_item', 'next_item'])
 async def navigate_items(callback_query: types.CallbackQuery):
-    # item_id = int(callback_query.message.caption.split('ID: ')[1].split('\n')[0])
-    # category = callback_query.message.caption.split('Category: ')[1].split('\n')[0]
-    items = await db.get_items_by_category( item_data["category_id"])
+
+    if min_max['min'] is not None and min_max['max'] is not None:
+        items = await db.get_items_by_price_range_and_category(min_max['min'], min_max['max'], min_max['category_id'])
+        print('min-max')
+    else:
+        items = await db.get_items_by_category(item_data["category_id"])
+        print('catalog')
 
     current_index = next((index for index, item in enumerate(items) if item[0] == item_data["item_id"]), None)
 
@@ -127,11 +185,6 @@ async def add_item_to_cart(callback_query: types.CallbackQuery):
     else:
         await db.add_to_cart(save_id, item_data["item_id"])
         await callback_query.answer('Товар додано до кошика')
-
-
-@dp.callback_query_handler(text='cancel')
-async def cancel(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id, "Операцію скасовано.")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -195,8 +248,13 @@ async def delete_item(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(text='to_pay')
 async def to_pay(callback_query: types.CallbackQuery):
+    await callback_query.message.answer('Для оплати товарів натисніть "Заплатити" і введіть всю потрібну інформацію.'
+                                        'Будь-ласка заповнюйте поля коректними данними. '
+                                        'В поле вулиці можете вводить адрес пошти. Якщо виникнуть непорозуміння щодо '
+                                        'заповнених вами даних, то наша адміністрація з вами зв\'яжиться для уточнення')
     await bot.send_invoice(callback_query.message.chat.id, 'Покупка товарів', 'Покупка товарів в телеграм-магазині',
-                           'invoice', os.getenv('PAYMENT_TOKEN'), 'USD', [types.LabeledPrice('Покупка товарів', summa * 100)],
+                           'invoice', os.getenv('PAYMENT_TOKEN'), 'USD',
+                           [types.LabeledPrice('Покупка товарів', summa * 100)],
                            need_email=True, need_phone_number=True, need_shipping_address=True)
 
 
@@ -204,17 +262,6 @@ async def to_pay(callback_query: types.CallbackQuery):
 async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
     await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
 
-
-# @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
-# async def successful_payment(message: types.Message):
-#     print("SUCCESSFUL PAYMENT:")
-#     payment_info = message.successful_payment.to_python()
-#     for k, v in payment_info.items():
-#         print(f"{k} = {v}")
-#
-#     await bot.send_message(message.chat.id,
-#                            f"Платіж на суму  {message.successful_payment.total_amount // 100} "
-#                            f"{message.successful_payment.currency} пройшов успішно!!!")
 
 @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def successful_payment(message: types.Message):
@@ -232,7 +279,10 @@ async def successful_payment(message: types.Message):
         workbook = Workbook()
         sheet = workbook.active
         # Write headers
-        sheet.append(['currency', 'total_amount', 'ordered_items', 'invoice_payload', 'phone_number', 'email', 'country_code', 'state', 'city', 'street_line1', 'street_line2', 'post_code', 'telegram_payment_charge_id', 'provider_payment_charge_id'])
+        sheet.append(
+            ['currency', 'total_amount', 'ordered_items', 'invoice_payload', 'phone_number', 'email', 'country_code',
+             'state', 'city', 'street_line1', 'street_line2', 'post_code', 'telegram_payment_charge_id',
+             'provider_payment_charge_id'])
 
     # Extract ordered items
     ordered_items = ''
@@ -264,12 +314,18 @@ async def successful_payment(message: types.Message):
 
     await bot.send_message(message.chat.id,
                            f"Платіж на суму {message.successful_payment.total_amount // 100} "
-                           f"{message.successful_payment.currency} пройшов успішно!!!")
+                           f"{message.successful_payment.currency} пройшов успішно! Очікуйте ваш товар.")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+info_text = "Автор бота: @BJLAD_IK"
 
 
 @dp.message_handler(text='Інфо')
 async def info(message: types.Message):
-    await message.answer('Автор бота: @BJLAD_IK')
+    global info_text
+
+    if message.from_user.id == int(os.getenv('ADMIN_ID')):
+        await message.answer(info_text, reply_markup=info_change_btn)
+    else:
+        await message.answer(info_text)
