@@ -1,8 +1,11 @@
 import os
+import types
 
 from aiogram import types
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.dispatcher.filters import state
+
+from states.client_states import SearchPrice, DeleteItemFromCart, SearchName
 from openpyxl.reader.excel import load_workbook
 from openpyxl.workbook import Workbook
 
@@ -12,6 +15,7 @@ from keyboards.client_kb import kb_client, item_btn_client
 from keyboards.catalog_kb import create_keyboard_catalog
 from keyboards.cart_kb import cart_btn
 from keyboards.info_kb import info_change_btn
+from keyboards.view_products_kb import products_kb
 
 from database import database as db
 
@@ -29,23 +33,35 @@ async def cmd_start(message: types.Message):
         await message.answer('Вітаю, Ви увійшли як адмін!', reply_markup=kb_admin)
     else:
         await message.answer(
-            f"Привіт, {message.from_user.first_name} ({message.from_user.id})! Вітаю в нашому магазині.",
+            f"Привіт, {message.from_user.first_name}! Вітаю в нашому магазині.",
             reply_markup=kb_client)
 
 
-# ----------------------------------------------------------------------------------------------------------------------#
-class SearchPriceState(StatesGroup):
-    waiting_for_category = State()
-    waiting_for_price_range = State()
+# ----------------------------------------------------------------------------------------------------------------------
+@dp.message_handler(text='Переглянути товари')
+async def view_products(message: types.Message):
+    await message.answer('Оберіть з клавіатури, що ви хочете зробити (підбір товарів по ціні, пошук за назвою товара '
+                         'або просто перегляньте каталог)', reply_markup=products_kb)
 
 
-@dp.message_handler(text='Підбір товарів')
+@dp.message_handler(text='Повернутися назад')
+async def back_to_start_kb(message: types.Message):
+    if message.from_user.id == int(os.getenv('ADMIN_ID')):
+        keyboard = kb_admin
+    else:
+        keyboard = kb_client
+
+    await message.answer('Повернення до головної клавіатури', reply_markup=keyboard)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+@dp.message_handler(text='Підбір товарів по ціні')
 async def search_by_price(message: types.Message):
-    await SearchPriceState.waiting_for_category.set()
+    await SearchPrice.waiting_category.set()
     await show_catalog(message)
 
 
-@dp.callback_query_handler(lambda query: query.data.isdigit(), state=SearchPriceState.waiting_for_category)
+@dp.callback_query_handler(lambda query: query.data.isdigit(), state=SearchPrice.waiting_category)
 async def handle_category_selection(callback_query: types.CallbackQuery, state: FSMContext):
     category_id = int(callback_query.data)
     await state.update_data(category_id=category_id)
@@ -54,7 +70,7 @@ async def handle_category_selection(callback_query: types.CallbackQuery, state: 
 
 async def ask_price_range(message: types.Message):
     await message.answer("Введіть ціновий діапазон у форматі 'мінімальна ціна - максимальна ціна', наприклад, 10-50:")
-    await SearchPriceState.waiting_for_price_range.set()
+    await SearchPrice.waiting_price_range.set()
 
 min_max = {
     'min': None,
@@ -63,7 +79,7 @@ min_max = {
 }
 
 
-@dp.message_handler(state=SearchPriceState.waiting_for_price_range)
+@dp.message_handler(state=SearchPrice.waiting_price_range)
 async def handle_price_range_input(message: types.Message, state: FSMContext):
     global min_max
     current_category_messages.clear()
@@ -82,6 +98,43 @@ async def handle_price_range_input(message: types.Message, state: FSMContext):
             await state.finish()
         else:
             await message.answer("Товарів у заданому ціновому діапазоні не знайдено.")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+@dp.message_handler(text='Пошук по назві')
+async def search_by_name(message: types.Message):
+    await SearchName.waiting_category.set()
+    await show_catalog(message)
+
+
+@dp.callback_query_handler(lambda query: query.data.isdigit(), state=SearchName.waiting_category)
+async def handle_category_selection_name(callback_query: types.CallbackQuery, state: FSMContext):
+    category_id = int(callback_query.data)
+    await state.update_data(category_id=category_id)
+    await ask_name(callback_query.message)
+
+
+async def ask_name(message: types.Message):
+    await message.answer("Введіть назву товару або її частину:")
+    await SearchName.waiting_name.set()
+
+
+@dp.message_handler(state=SearchName.waiting_name)
+async def handle_name_input(message: types.Message, state: FSMContext):
+    current_category_messages.clear()
+    name = message.text.strip()
+    async with state.proxy() as data:
+        category_id = data.get('category_id')
+
+        items = await db.search_items_by_name(category_id, name)
+        print(items)
+
+        if items:
+            await show_item(message, items[0])
+            await state.finish()
+        else:
+            await message.answer("Товарів із заданою назвою не знайдено.")
+            # await state.finish()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -126,8 +179,6 @@ async def show_item(message: types.Message, item):
 
     keyboard = item_btn_admin if save_id == int(os.getenv('ADMIN_ID')) else item_btn_client
 
-    print(current_category_messages)
-
     if message.chat.id in current_category_messages:
         await bot.edit_message_media(chat_id=message.chat.id, message_id=current_category_messages[message.chat.id],
                                      media=types.InputMediaPhoto(media=item[5], caption=item_info),
@@ -162,10 +213,8 @@ async def navigate_items(callback_query: types.CallbackQuery):
 
     if min_max['min'] is not None and min_max['max'] is not None:
         items = await db.get_items_by_price_range_and_category(min_max['min'], min_max['max'], min_max['category_id'])
-        print('min-max')
     else:
         items = await db.get_items_by_category(item_data["category_id"])
-        print('catalog')
 
     current_index = next((index for index, item in enumerate(items) if item[0] == item_data["item_id"]), None)
 
@@ -222,10 +271,6 @@ async def clear_cart(callback_query: types.CallbackQuery):
     if not cart_item:
         await callback_query.message.delete()
         await callback_query.message.answer('Ваш кошик пустий')
-
-
-class DeleteItemFromCart(StatesGroup):
-    item_id = State()
 
 
 @dp.callback_query_handler(text='delete_item_from_cart')
@@ -318,7 +363,7 @@ async def successful_payment(message: types.Message):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-info_text = "Автор бота: @BJLAD_IK"
+info_text = "Мій творець: @BJLAD_IK"
 
 
 @dp.message_handler(text='Інфо')

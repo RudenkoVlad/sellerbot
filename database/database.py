@@ -110,3 +110,7 @@ async def get_items_by_price_range_and_category(min_price, max_price, category_i
     items = cur.execute("SELECT * FROM items WHERE category=? AND price BETWEEN ? AND ?", (category_id, min_price, max_price)).fetchall()
     return items
 
+
+async def search_items_by_name(category_id, name):
+    items = cur.execute("SELECT * FROM items WHERE category=? AND name LIKE ?", (category_id, '%' + name + '%',)).fetchall()
+    return items

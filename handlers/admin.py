@@ -1,5 +1,5 @@
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
+from states.admin_states import ManagerCategories, NewOrder, BotMailing, ChangeInfoText
 from aiogram import types
 import os
 
@@ -24,10 +24,6 @@ async def admin_btn(message: types.Message):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-class ManagerCategories(StatesGroup):
-    adding = State()
-    deleting = State()
-
 
 @dp.message_handler(text='Додати категорію')
 async def add_category(message: types.Message):
@@ -71,15 +67,6 @@ async def process_delete_category_callback(callback_query: types.CallbackQuery, 
     await state.finish()
 
 # ----------------------------------------------------------------------------------------------------------------------
-
-
-class NewOrder(StatesGroup):
-    type = State()
-    name = State()
-    desc = State()
-    price = State()
-    photo = State()
-
 
 @dp.message_handler(text='Додати товар')
 async def add_item(message: types.Message):
@@ -163,11 +150,6 @@ async def delete_item_callback(callback_query: types.CallbackQuery):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-class BotMailing(StatesGroup):
-    text = State()
-    state = State()
-    photo = State()
-
 
 @dp.message_handler(text='Зробити розсилку')
 async def start_mailing(message: types.Message):
@@ -194,7 +176,6 @@ async def start(call: types.CallbackQuery, state: FSMContext):
     await state.finish()
 
     for user_id, active_status in users:
-        # if user == 539544748:  # !!!
         try:
             if active_status != 1:
                 await db.set_active(user_id, 1)
@@ -231,10 +212,9 @@ async def start(call: types.CallbackQuery, state: FSMContext):
     await state.finish()
 
     for user_id, active_status in users:
-        # if user == 539544748:  # !!!
         try:
             if active_status != 1:
-                await db.set_active(user_id, 1)  # Змінити статус активності на 1
+                await db.set_active(user_id, 1)
             await dp.bot.send_photo(chat_id=user_id, photo=photo, caption=text)
             await sleep(0.33)
         except:
@@ -264,24 +244,15 @@ async def back_to_kb_admin(message: types.Message):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class ChangeInfoText(StatesGroup):
-    waiting_for_new_text = State()
-
-
 @dp.callback_query_handler(text="change_info")
 async def change_info_text(callback_query: types.CallbackQuery):
-    await ChangeInfoText.waiting_for_new_text.set()
+    await ChangeInfoText.new_info_text.set()
     await callback_query.message.answer("Введіть новий текст інфо.")
 
 
-@dp.message_handler(state=ChangeInfoText.waiting_for_new_text)
+@dp.message_handler(state=ChangeInfoText.new_info_text)
 async def process_new_info_text(message: types.Message, state: FSMContext):
 
     handlers.client.info_text = message.text
     await state.finish()
     await message.answer("Текст інфо успішно змінено.")
-
-
-
-
-
